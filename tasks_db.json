@@ -138,5 +138,55 @@
             "1": "stamp",
             "0": "screw"
         }
+    },
+    {
+        "name": "extracted_20260910_101842_part1",
+        "path": "E:\\lampn\\Programming\\MechPartsDetection\\AutoLabeller\\export\\extracted_20260910_101842_part1",
+        "date": "2026-09-10 10:26",
+        "type": "extracted_part",
+        "edited": "2026-09-10 11:11",
+        "classes": {
+            "0": "machine"
+        }
+    },
+    {
+        "name": "extracted_20260910_101842_part2",
+        "path": "E:\\lampn\\Programming\\MechPartsDetection\\AutoLabeller\\export\\extracted_20260910_101842_part2",
+        "date": "2026-09-10 10:26",
+        "type": "extracted_part",
+        "edited": "2026-09-10 16:02",
+        "classes": {
+            "0": "machine"
+        }
+    },
+    {
+        "name": "extracted_20260910_101842_part3",
+        "path": "E:\\lampn\\Programming\\MechPartsDetection\\AutoLabeller\\export\\extracted_20260910_101842_part3",
+        "date": "2026-09-10 10:26",
+        "type": "extracted_part",
+        "edited": "2026-09-11 10:01",
+        "classes": {
+            "0": "machine"
+        }
+    },
+    {
+        "name": "extracted_20260910_101842_part4",
+        "path": "E:\\lampn\\Programming\\MechPartsDetection\\AutoLabeller\\export\\extracted_20260910_101842_part4",
+        "date": "2026-09-10 10:26",
+        "type": "extracted_part",
+        "edited": "2026-09-10 10:26",
+        "classes": {
+            "0": "machine"
+        }
+    },
+    {
+        "name": "extracted_20260910_101842_part5",
+        "path": "E:\\lampn\\Programming\\MechPartsDetection\\AutoLabeller\\export\\extracted_20260910_101842_part5",
+        "date": "2026-09-10 10:26",
+        "type": "extracted_part",
+        "edited": "2026-09-11 13:57",
+        "classes": {
+            "0": "machine"
+        }
     }
 ]
