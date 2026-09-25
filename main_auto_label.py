@@ -33,7 +33,12 @@ class LabelMakerPro:
         self.model_path = tk.StringVar(value="yolov8s.pt")
         self.autolabel_model_path = tk.StringVar(value="")
         self.export_dir = tk.StringVar(value=str(Path(__file__).parent / "export"))
+        self.model_dir = tk.StringVar(value=str(Path(__file__).parent / "model"))
         self.video_files = []
+        
+        # Ensure base directories exist
+        os.makedirs(self.export_dir.get(), exist_ok=True)
+        os.makedirs(self.model_dir.get(), exist_ok=True)
         
         self.db_path = Path(__file__).parent / "tasks_db.json"
         self.tasks = self.load_tasks_db()
@@ -91,7 +96,7 @@ class LabelMakerPro:
         }
         self.param_vars = {k: tk.StringVar(value=v) for k, v in self.train_params.items()}
         self.train_split_ratio = tk.DoubleVar(value=0.85)
-        self.extraction_interval = tk.StringVar(value="5") # Default extraction interval (sec)
+        self.extraction_interval = tk.StringVar(value="5")
         self.num_split_parts = tk.StringVar(value="1")
 
         self.create_widgets()
@@ -121,7 +126,6 @@ class LabelMakerPro:
         self.save_json()
 
     def write_data_yaml(self, task_dir, classes_dict):
-        """Generates a standard YOLO data.yaml inside the task root directory."""
         yaml_path = Path(task_dir) / "data.yaml"
         with open(yaml_path, "w") as f:
             f.write("train: images\n")
@@ -171,7 +175,6 @@ class LabelMakerPro:
         self.task_tree.pack(fill="both", expand=True)
         self.task_tree.bind("<<TreeviewSelect>>", self.on_task_select)
 
-        # --- SELECTION BUTTONS ---
         sel_frame = tk.Frame(task_frame)
         sel_frame.pack(fill="x", pady=2)
         tk.Button(sel_frame, text="☑ Select All", command=self.select_all_tasks).pack(side="left", expand=True, fill="x", padx=(0,2))
@@ -200,6 +203,13 @@ class LabelMakerPro:
         self.idx_lbl = tk.Label(nav_top, text="0/0", fg="white", bg="#34495e", font=("Arial", 10, "bold"))
         self.idx_lbl.pack(side="left", expand=True)
         tk.Button(nav_top, text="NEXT ▶", command=self.next_img, width=8).pack(side="right", padx=5)
+
+        img_mod_frame = tk.Frame(nav_frame, bg="#34495e")
+        img_mod_frame.pack(fill="x", pady=3)
+        tk.Button(img_mod_frame, text="➕ Add Image(s)", bg="#27ae60", fg="white", font=("Arial", 8, "bold"), 
+                  command=self.add_images_to_task).pack(side="left", fill="x", expand=True, padx=(2, 2))
+        tk.Button(img_mod_frame, text="🗑 Delete Image", bg="#c0392b", fg="white", font=("Arial", 8, "bold"), 
+                  command=self.delete_current_image).pack(side="left", fill="x", expand=True, padx=(2, 2))
 
         tk.Button(nav_frame, text="⚡ SPOT-LABEL CURRENT IMAGE", bg="#3498db", fg="white", command=self.autolabel_current_view).pack(fill="x", padx=5, pady=5)
         tk.Label(nav_frame, text="Auto-Save Enabled", fg="#2ecc71", bg="#34495e", font=("Arial", 8, "italic")).pack(pady=2)
@@ -251,12 +261,10 @@ class LabelMakerPro:
         self.editor_canvas.bind("<Button-3>", self.on_right_click)
 
     def select_all_tasks(self):
-        """Highlights every single task in the database for bulk actions."""
         for item in self.task_tree.get_children():
             self.task_tree.selection_add(item)
 
     def clear_task_selection(self):
-        """Deselects all tasks and clears the active editor screen."""
         self.task_tree.selection_remove(self.task_tree.get_children())
         self.training_session_path = None
         self.image_list = []
@@ -265,7 +273,7 @@ class LabelMakerPro:
         self.idx_lbl.config(text="0/0")
 
     def build_pipeline_ui(self):
-        # --- PIPELINE A1: Video Frame Extraction (Pure Extraction, No Model) ---
+        # Pipeline A1: Video Frame Extraction
         ext_box = tk.LabelFrame(self.pipe_tab, text="Pipeline A1: Video Frame Extraction (No Model)", pady=8, padx=8)
         ext_box.pack(fill="x", pady=4)
 
@@ -294,7 +302,7 @@ class LabelMakerPro:
         self.extract_btn = tk.Button(ext_box, text="🎞 EXTRACT FRAMES TO NEW TASK", bg="#16a085", fg="white", font=("Arial", 9, "bold"), command=self.start_frame_extraction)
         self.extract_btn.pack(fill="x", pady=4)
 
-        # --- PIPELINE A2: Model Auto-Labeling (Requires Reference Model) ---
+        # Pipeline A2: Model Auto-Labeling
         auto_box = tk.LabelFrame(self.pipe_tab, text="Pipeline A2: Batch Auto-Labeling (Target Selected Task)", pady=8, padx=8)
         auto_box.pack(fill="x", pady=4)
 
@@ -307,7 +315,7 @@ class LabelMakerPro:
         self.autolabel_task_btn = tk.Button(auto_box, text="⚡ AUTO-LABEL SELECTED TASK", bg="#3498db", fg="white", font=("Arial", 9, "bold"), command=self.start_batch_autolabel)
         self.autolabel_task_btn.pack(fill="x", pady=4)
 
-        # --- PIPELINE B: Model Training ---
+        # Pipeline B: Model Training
         train_box = tk.LabelFrame(self.pipe_tab, text="Pipeline B: Model Training", pady=8, padx=8)
         train_box.pack(fill="x", pady=4)
         
@@ -331,7 +339,6 @@ class LabelMakerPro:
     # PIPELINE IMPLEMENTATIONS
     # ==========================================
     def start_frame_extraction(self):
-        """Extracts frames from queued videos into standard YOLO format without model inference."""
         if not self.video_files:
             return messagebox.showwarning("Warning", "Please add at least one video to the queue!")
         threading.Thread(target=self._exec_frame_extraction, daemon=True).start()
@@ -369,7 +376,6 @@ class LabelMakerPro:
                     if frame_idx % frame_step == 0:
                         img_name = f"{v_path.stem}_f{frame_idx:06d}.jpg"
                         cv2.imwrite(str(images_dir / img_name), frame)
-                        # Generate empty label file for YOLO format pairing
                         (labels_dir / f"{v_path.stem}_f{frame_idx:06d}.txt").touch()
                         saved_count += 1
                         total_frames += 1
@@ -424,7 +430,6 @@ class LabelMakerPro:
             self.refresh_task_list()
 
     def start_batch_autolabel(self):
-        """Runs batch auto-labeling on the images/ directory of the selected task."""
         selected_iids = self.task_tree.selection()
         if not selected_iids:
             return messagebox.showwarning("Warning", "Select a task from the Task Database to auto-label!")
@@ -497,7 +502,6 @@ class LabelMakerPro:
     # BULK YOLO IMPORT & EXPORT
     # ==========================================
     def import_zip(self):
-        """Extracts and standardizes one or multiple dataset archives into images/, labels/, data.yaml."""
         paths = filedialog.askopenfilenames(filetypes=[("Zip files", "*.zip")], title="Select one or more YOLO Zips")
         if not paths: return
         
@@ -511,11 +515,9 @@ class LabelMakerPro:
             
             self.log(f"Unpacking archive: {p.name}...")
             try:
-                # Extract the primary zip
                 with zipfile.ZipFile(p, 'r') as z:
                     z.extractall(staging_dir)
                 
-                # Check for and extract any nested zips (e.g., if it's a master "bulk export" zip)
                 nested_zips = list(staging_dir.rglob("*.zip"))
                 for nz in nested_zips:
                     try:
@@ -526,7 +528,6 @@ class LabelMakerPro:
                     except Exception as e:
                         self.log(f"Failed to unpack nested zip {nz.name}: {e}")
 
-                # Locate all data.yaml files in the staging area. Each represents a distinct YOLO task.
                 found_yamls = list(staging_dir.rglob("data.yaml")) + list(staging_dir.rglob("dataset.yaml"))
                 
                 if not found_yamls:
@@ -537,13 +538,11 @@ class LabelMakerPro:
                 for yaml_path in found_yamls:
                     base_dir = yaml_path.parent
                     
-                    # Name the task after its immediate directory, or the original zip if it's at the root
                     if base_dir == staging_dir:
                         task_name = p.stem
                     else:
                         task_name = base_dir.name
 
-                    # Parse classes
                     task_classes = {}
                     with open(yaml_path, 'r') as f:
                         lines = f.readlines()
@@ -567,7 +566,6 @@ class LabelMakerPro:
                     if not task_classes:
                         task_classes = {0: "object"}
 
-                    # Validate images exist
                     src_img_dir = base_dir / "images"
                     src_lbl_dir = base_dir / "labels"
                     
@@ -583,7 +581,6 @@ class LabelMakerPro:
                         for img in loose_images:
                             shutil.move(str(img), str(src_img_dir / img.name))
 
-                    # Move to permanent task folder
                     final_ts = datetime.now().strftime("%H%M%S_%f")[:10]
                     final_task_dir = Path(self.export_dir.get()) / f"yolo_{final_ts}"
                     os.makedirs(final_task_dir, exist_ok=True)
@@ -612,7 +609,6 @@ class LabelMakerPro:
             except Exception as e:
                 self.log(f"YOLO Import Error on {p.name}: {e}")
             finally:
-                # Cleanup temporary staging dir
                 shutil.rmtree(staging_dir, ignore_errors=True)
         
         if imported_count > 0:
@@ -620,12 +616,10 @@ class LabelMakerPro:
         self.refresh_task_list()
 
     def export_task(self):
-        """Packages standard images/, labels/, and data.yaml into YOLO zips. Supports Bulk Export."""
         selected_iids = self.task_tree.selection()
         if not selected_iids:
             return messagebox.showwarning("!", "Select one or more tasks to export.")
             
-        # Single Task Export Logic
         if len(selected_iids) == 1:
             idx = int(self.task_tree.item(selected_iids[0])['values'][0])
             task = self.tasks[idx]
@@ -652,7 +646,6 @@ class LabelMakerPro:
                 self.log(f"YOLO Export Failed: {e}")
                 messagebox.showerror("Export Error", f"Failed to export: {e}")
                 
-        # Bulk Tasks Export Logic
         else:
             out_dir = filedialog.askdirectory(title=f"Select Output Folder for {len(selected_iids)} tasks")
             if not out_dir: 
@@ -680,6 +673,103 @@ class LabelMakerPro:
                     self.log(f"Failed to export '{task['name']}': {e}")
                     
             messagebox.showinfo("Bulk Export Complete", f"Successfully exported {success_count}/{len(selected_iids)} tasks to:\n{out_dir}")
+
+    # ==========================================
+    # DATASET IMAGE MANAGEMENT (ADD / DELETE)
+    # ==========================================
+    def add_images_to_task(self):
+        if not self.training_session_path or not self.training_session_path.exists():
+            return messagebox.showwarning("Warning", "Please select an active task to add images to.")
+
+        file_paths = filedialog.askopenfilenames(
+            title="Select Image(s) to Add to Dataset",
+            filetypes=[("Image files", "*.jpg *.jpeg *.png *.bmp *.webp")]
+        )
+        if not file_paths:
+            return
+
+        images_dir = self.training_session_path / "images"
+        labels_dir = self.training_session_path / "labels"
+        os.makedirs(images_dir, exist_ok=True)
+        os.makedirs(labels_dir, exist_ok=True)
+
+        added_paths = []
+        for src_str in file_paths:
+            src_p = Path(src_str)
+            dest_p = images_dir / src_p.name
+
+            if dest_p.exists():
+                ts = datetime.now().strftime("%H%M%S_%f")[:10]
+                dest_p = images_dir / f"{src_p.stem}_{ts}{src_p.suffix}"
+
+            shutil.copy(str(src_p), str(dest_p))
+
+            lbl_p = labels_dir / f"{dest_p.stem}.txt"
+            if not lbl_p.exists():
+                lbl_p.touch()
+
+            added_paths.append(dest_p)
+
+        self.image_list.extend(added_paths)
+        self.log(f"Added {len(added_paths)} image(s) to {self.training_session_path.name}.")
+
+        selected = self.task_tree.selection()
+        if selected:
+            idx = int(self.task_tree.item(selected[0])['values'][0])
+            now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
+            self.tasks[idx]['edited'] = now_str
+            self.save_json()
+            self.task_tree.set(selected[0], column="edited", value=now_str)
+
+        self.update_stats()
+        self.current_img_idx = len(self.image_list) - len(added_paths)
+        self.show_image()
+
+    def delete_current_image(self):
+        if not self.image_list or not self.training_session_path:
+            return messagebox.showwarning("Warning", "No image is currently loaded to delete.")
+
+        img_p = self.image_list[self.current_img_idx]
+
+        if messagebox.askyesno("Delete Image", f"Permanently delete '{img_p.name}' and its labels from disk?"):
+            try:
+                if img_p.exists():
+                    os.remove(img_p)
+
+                lbl_p = self.training_session_path / "labels" / f"{img_p.stem}.txt"
+                if lbl_p.exists():
+                    os.remove(lbl_p)
+
+                sibling_txt = img_p.with_suffix('.txt')
+                if sibling_txt.exists():
+                    os.remove(sibling_txt)
+
+                deleted_name = img_p.name
+                self.image_list.pop(self.current_img_idx)
+                self.log(f"Permanently deleted image from disk: {deleted_name}")
+
+                selected = self.task_tree.selection()
+                if selected:
+                    idx = int(self.task_tree.item(selected[0])['values'][0])
+                    now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
+                    self.tasks[idx]['edited'] = now_str
+                    self.save_json()
+                    self.task_tree.set(selected[0], column="edited", value=now_str)
+
+                if not self.image_list:
+                    self.boxes = []
+                    self.editor_canvas.delete("all")
+                    self.idx_lbl.config(text="0/0")
+                else:
+                    if self.current_img_idx >= len(self.image_list):
+                        self.current_img_idx = len(self.image_list) - 1
+                    self.show_image()
+
+                self.update_stats()
+
+            except Exception as e:
+                self.log(f"Error deleting image: {e}")
+                messagebox.showerror("Error", f"Failed to delete image: {e}")
 
     # ==========================================
     # EDITOR & TASK ACTIONS
@@ -954,7 +1044,6 @@ class LabelMakerPro:
                 self.save_boxes()
             else:
                 self.redraw()
-                self.log("Discarded tiny box.")
 
     def on_right_click(self, event):
         self.save_snapshot()
@@ -997,6 +1086,9 @@ class LabelMakerPro:
                     cleaned_params[k] = float(val) if "." in val else int(val)
                 except ValueError: cleaned_params[k] = val
 
+        # Provide model directory directly in parameters
+        cleaned_params["model_dir"] = self.model_dir.get()
+
         task_data = []
         for iid in selected_iids:
             actual_idx = int(self.task_tree.item(iid)['values'][0])
@@ -1015,7 +1107,7 @@ class LabelMakerPro:
         ]
 
         self.train_proc = subprocess.Popen(cmd)
-        self.log(f"Training started (Standalone Mode). PID: {self.train_proc.pid}")
+        self.log(f"Training started (Standalone Mode). Output target: /model/<date>/run-N. PID: {self.train_proc.pid}")
         self.train_btn.config(state="disabled", text="⌛ Training...")
         threading.Thread(target=self._monitor_training, daemon=True).start()
 
@@ -1104,7 +1196,10 @@ class LabelMakerPro:
     def show_image(self):
         if not self.image_list: return
         img_p = self.image_list[self.current_img_idx]
-        img = Image.open(img_p)
+
+        with Image.open(img_p) as img_file:
+            img = img_file.copy()
+
         self.canvas_w = 800
         self.canvas_h = int(img.height * (800 / img.width))
         self.tk_img = ImageTk.PhotoImage(img.resize((self.canvas_w, self.canvas_h)))
@@ -1155,7 +1250,8 @@ class LabelMakerPro:
             self.show_image()
     
     def browse_model(self):
-        p = filedialog.askopenfilename(filetypes=[("YOLO Model", "*.pt")])
+        init_dir = self.model_dir.get() if Path(self.model_dir.get()).exists() else None
+        p = filedialog.askopenfilename(initialdir=init_dir, filetypes=[("YOLO Model", "*.pt")])
         if p:
             self.model_path.set(p)
             self.log(f"Base training model set to: {Path(p).name}")
@@ -1173,7 +1269,8 @@ class LabelMakerPro:
             self.refresh_class_dropdown()
 
     def browse_autolabel_model(self):
-        p = filedialog.askopenfilename(filetypes=[("YOLO Model", "*.pt")])
+        init_dir = self.model_dir.get() if Path(self.model_dir.get()).exists() else None
+        p = filedialog.askopenfilename(initialdir=init_dir, filetypes=[("YOLO Model", "*.pt")])
         if p:
             self.autolabel_model_path.set(p)
             self.log(f"Inference model set to: {Path(p).name}")
